@@ -122,3 +122,11 @@ with tf.Session() as sess:
                                                          Y: teY[test_indices]})))
 
     print "Training finished at: ", datetime.datetime.now().time()
+
+"""
+Results:
+
+1. Simple architecture, training only with 1 batch.
+    - accuracy: 0.41796875 (wow, that is really low, I think)
+    - training time on my machine: 40 minutes
+"""
