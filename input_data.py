@@ -2,13 +2,13 @@ import tensorflow as tf
 import numpy as np
 import datetime
 
-def weight_variable(shape):
+def weight_variable(shape, name):
   initial = tf.random_normal(shape, stddev=0.1)
-  return tf.Variable(initial)
+  return tf.Variable(initial, name=name)
 
-def bias_variable(shape):
+def bias_variable(shape, name):
   initial = tf.constant(0.1, shape=shape)
-  return tf.Variable(initial)
+  return tf.Variable(initial, name=name)
 
 def model(X, weights_conv, bias_conv, weights_fc, bias_fc):
 
@@ -70,27 +70,40 @@ def dense_to_one_hot(labels_dense, num_classes=10):
     return labels_one_hot
 
 # input vector 32x32x3 image
-X = tf.placeholder(tf.float32, [None, 32, 32, 3]) # input
-Y = tf.placeholder(tf.float32, [None, 10]) # output (10 classes)
+X = tf.placeholder(tf.float32, [None, 32, 32, 3], name="X-input") # input
+Y = tf.placeholder(tf.float32, [None, 10], name="Y-input") # output (10 classes)
 
 num_features = 32
 batch_size = 128
 test_size = 256
 
-weights_conv = weight_variable([3, 3, 3, num_features]) # 3x3 convolution, 3 input channels, 32 features=output channels
-bias_conv = bias_variable([num_features]) # bias variable for each feature=output channel
+weights_conv = weight_variable([3, 3, 3, num_features], name="weights-conv") # 3x3 convolution, 3 input channels, 32 features=output channels
+bias_conv = bias_variable([num_features], name="bias-conv") # bias variable for each feature=output channel
 
-weights_fc = weight_variable([16 * 16 * num_features, 10]) # output of pooling -> fully connected layer with 10 output neurons
-bias_fc = bias_variable([10]) # bias for every output neuron
+weights_fc = weight_variable([16 * 16 * num_features, 10], name="weights-fc") # output of pooling -> fully connected layer with 10 output neurons
+bias_fc = bias_variable([10], name="bias-fc") # bias for every output neuron
 
 py_x = model(X, weights_conv, bias_conv, weights_fc, bias_fc)
 
-cost = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits(py_x, Y))
+# Add summary ops to collect data
+weights_conv_hist = tf.histogram_summary("weights-conv-hist", weights_conv)
+bias_conv_hist    = tf.histogram_summary("biases-conv-hist", bias_conv)
+weights_fc_hist = tf.histogram_summary("weights-fc-hist", weights_fc)
+bias_fc_hist    = tf.histogram_summary("biases-fc-hist", bias_fc)
+y_hist = tf.histogram_summary("y", py_x)
+
+cross_entropy = tf.nn.softmax_cross_entropy_with_logits(py_x, Y)
+print "cross entropy shape", cross_entropy.get_shape()
+
+cost = tf.reduce_mean(cross_entropy)
+tf.scalar_summary("cost", cost)
 train_op = tf.train.AdamOptimizer(1e-4).minimize(cost)
 predict_op = tf.argmax(py_x, 1)
 
 correct_prediction = tf.equal(tf.argmax(py_x, 1), tf.argmax(Y, 1))
 accuracy = tf.reduce_mean(tf.cast(correct_prediction, tf.float32))
+
+accuracy_summary = tf.scalar_summary("accuracy", accuracy)
 
 trX, trY = get_batch(1) # training
 teX, teY = get_test() # test
@@ -100,14 +113,29 @@ teX = teX.reshape(-1, 32, 32, 3)  # 32x32x3 input img
 
 with tf.Session() as sess:
 
+    # Merge all the summaries and log them
+    merged = tf.merge_all_summaries()
+    writer = tf.train.SummaryWriter("/tmp/cifar-logs", sess.graph)
+
     tf.initialize_all_variables().run()
 
     print "Training started at: ", datetime.datetime.now().time()
 
-    for i in range(100):
+    for i in range(10):
+
         training_batch = zip(range(0, len(trX), batch_size),
                              range(batch_size, len(trX), batch_size))
+
         for start, end in training_batch:
+
+            if i%2 == 0: # FIXME less often
+                result, acc = sess.run([merged, accuracy], feed_dict={X: teX, Y: teY})
+                # summary_str = result[0]
+                #acc = acc[1]
+                # print i, result
+                writer.add_summary(result, i)
+                print("Accuracy at step %s: %s" % (i, acc))
+
             batch_labels = trY[start:end] #  shape = (128, 32, 32, 3)
             batch_samples = trX[start:end] # shape = (128, 10)
 
